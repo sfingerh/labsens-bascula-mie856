@@ -5,7 +5,7 @@ LabSens · Escuela de Ingeniería Eléctrica · PUCV
 
 Balanza de dos celdas (trasera / delantera) con dos cadenas de ADC en paralelo:
 
-- INA131 + ADS1115 (16 bit, ~800 Hz)
+- INA131 + ADS1115 (16 bit, hasta 750 SPS configurable)
 - HX711 (24 bit, ≤80 SPS)
 
 El firmware entrega CSV por USB a 115200 baud. El trabajo práctico pide medir **varios días**, agregar masa (≥8 veces/día, ≥60 s entre eventos), registrar **temperatura** y estimar el monto en monedas a los 4 y 8 días.
@@ -42,5 +42,5 @@ Ver `docs/ENUNCIADO.md` y `docs/GUIA_LAB.md`.
 
 ## CSV v4
 
-`t_ms,ads_rear,ads_front,hx1,hx2,sps_ads` — valores con tara. Serial: `T` retara.
+`t_ms,ads_rear,ads_front,hx1,hx2,sps_ads` — valores con tara. Serial: `T`/`t` retara; `j`/`k` tasa; `R`=750 SPS; `h` ayuda (ver `docs/GUIA_LAB.md`).
 Opcional DS18B20 en **D6**: si el sensor responde al arranque, se agrega `,temp_C` (ver `docs/GUIA_LAB.md`).

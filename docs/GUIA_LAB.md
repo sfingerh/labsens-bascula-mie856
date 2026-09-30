@@ -5,7 +5,19 @@ PlatformIO: abrir la raíz del repo, env `xiao_c6` o `xiao_s3`, Build, Upload, m
 
 ## Datos
 Header base: `t_ms,ads_rear,ads_front,hx1,hx2,sps_ads`  
-Tara de sesión: `T` + Enter.
+Tara de sesión: `T` o `t` en el monitor serie (115200).
+
+### Comandos USB (firmware v4.1)
+
+| Tecla | Acción |
+|-------|--------|
+| `T` / `t` | Retara (offsets de sesión) |
+| `j` | Baja la tasa de muestreo ADS (periodo del timer HW) |
+| `k` | Sube la tasa de muestreo ADS |
+| `R` | Restablece la tasa a **750 SPS** |
+| `h` / `H` | Ayuda (versión, autor, URL del repo, comandos) |
+
+Escala de tasas: `0.5 → 1 → 2 → 5 → 10 → 30` SPS y luego `50…750` en pasos de 50. Al cambiar la tasa, el firmware imprime una línea `# rate_Hz=…` (prefijo `#` para no romper parsers CSV). La tasa por defecto al arrancar es 750 SPS.
 
 ## Extensión opcional: temperatura (DS18B20)
 
@@ -25,7 +37,7 @@ Para el ensayo de varios días conviene medir temperatura cerca de las celdas. E
   `t_ms,ads_rear,ads_front,hx1,hx2,sps_ads,temp_C`  
   y cada fila agrega la temperatura en °C (2 decimales). Si una lectura puntual falla, esa celda sale como `nan`.
 
-La temperatura se muestrea ~1 vez por segundo en una tarea aparte; **no** interfiere con el muestreo ADS a ~800 Hz.
+La temperatura se muestrea ~1 vez por segundo en una tarea aparte; **no** interfiere con el muestreo ADS (tasa configurable, por defecto 750 SPS).
 
 ## Ensayo 20 min
 Vacío → T. Masa conocida → factor cuentas/gramos. Quitar masa (histéresis). 3–4 monedas con ≥60 s.
@@ -34,4 +46,4 @@ Vacío → T. Masa conocida → factor cuentas/gramos. Quitar masa (histéresis)
 USB estable. ≥8 eventos/día. Anotar hora y tipo de moneda. Con DS18B20, la columna `temp_C` queda en el CSV; sin sensor, anotar temperatura ambiente cada 1 h a mano. Tara vive en RAM.
 
 ## Informe
-Por qué 800 Hz si la masa cambia en minutos. Decimación. Sync: HX más lento, CSV repite último HX. Deriva térmica (usar `temp_C` si está disponible). LSB ADS 0.03125 mV @ ±1.024 V.
+Por qué muestrear a cientos de SPS si la masa cambia en minutos (probar `j`/`k`). Decimación. Sync: HX más lento, CSV repite último HX. Deriva térmica (usar `temp_C` si está disponible). LSB ADS 0.03125 mV @ ±1.024 V.

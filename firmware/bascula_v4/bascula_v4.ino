@@ -1,7 +1,8 @@
-// LabSens PUCV · MIE 856 · báscula v4
-// ADS1115 ~800 Hz + 2x HX711. CSV t_ms,ads_rear,ads_front,hx1,hx2,sps_ads (con tara).
+// LabSens PUCV · MIE 856 · báscula v4.1
+// ADS1115 muestreo configurable (timer HW) + 2x HX711.
+// CSV: t_ms,ads_rear,ads_front,hx1,hx2,sps_ads (con tara).
 // Extensión opcional: DS18B20 en D6 → columna temp_C si el sensor responde al arranque.
-// Serial T = retara.
+// Serial: T/t tara; j/k tasa; R=750 SPS; h/H ayuda.
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -12,23 +13,32 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+#define FW_VERSION "v4.1"
+#define FW_URL "https://github.com/sfingerh/labsens-bascula-mie856"
+
 #define HX1_DAT D1
 #define HX1_CLK D0
 #define HX2_DAT D2
 #define HX2_CLK D3
-#ifndef SDA
-  #define SDA D5
-#endif
-#ifndef SCL
-  #define SCL D4
-#endif
+// I2C en este hardware LabSens: SDA=D4, SCL=D5.
+// Usar siempre Wire.begin(D4, D5); no confiar en macros SDA/SCL del board
+// (en algunos cores quedan invertidas respecto al cableado real).
+#define I2C_SDA_PIN D4
+#define I2C_SCL_PIN D5
 // DS18B20 (OneWire): pin libre; D0–D5 ocupados por HX711 e I2C.
 #define DS18B20_PIN D6
 #define TEMP_SAMPLE_MS 1000UL
 #define I2C_FREQ 100000UL
-#define TIMER_HZ 800
-#define TIMER_PERIOD_US (1000000UL / TIMER_HZ)
 #define NUM_CALIB_SAMPLES 300
+
+// Escala de tasas (SPS). j baja índice, k sube, R → 750.
+static const float RATE_LADDER[] = {
+  0.5f, 1.0f, 2.0f, 5.0f, 10.0f, 30.0f,
+  50.0f, 100.0f, 150.0f, 200.0f, 250.0f, 300.0f, 350.0f,
+  400.0f, 450.0f, 500.0f, 550.0f, 600.0f, 650.0f, 700.0f, 750.0f
+};
+static const int RATE_LADDER_N = (int)(sizeof(RATE_LADDER) / sizeof(RATE_LADDER[0]));
+static const int RATE_IDX_DEFAULT = RATE_LADDER_N - 1;  // 750 SPS
 
 static hw_timer_t* s_timer = nullptr;
 static SemaphoreHandle_t s_semaSample = nullptr;
@@ -40,9 +50,11 @@ static int16_t adsRear_offset = 0, adsFront_offset = 0;
 static long hx1_offset = 0, hx2_offset = 0;
 static uint32_t lastSpsTime = 0;
 static uint16_t spsCount = 0, spsADS = 0;
+static int s_rateIdx = RATE_IDX_DEFAULT;
+static float s_rateHz = 750.0f;
 HX711 hx1, hx2;
 
-// Temperatura: muestreo lento en task propia (no en el camino ADS ~800 Hz).
+// Temperatura: muestreo lento en task propia (no en el camino ADS).
 static OneWire oneWire(DS18B20_PIN);
 static DallasTemperature dallas(&oneWire);
 static bool g_tempEnabled = false;
@@ -70,6 +82,51 @@ void IRAM_ATTR onTimer() {
   xSemaphoreGiveFromISR(s_semaSample, &hp);
   if (hp) portYIELD_FROM_ISR();
 }
+
+static uint64_t periodUsFromRate(float rateHz) {
+  // timerBegin(1e6) → 1 tick = 1 µs. 0.5 SPS → 2_000_000 µs.
+  if (rateHz <= 0.0f) return 2000000ULL;
+  double us = 1000000.0 / (double)rateHz;
+  if (us < 1.0) us = 1.0;
+  return (uint64_t)(us + 0.5);
+}
+
+static void printRateConfirm() {
+  Serial.print(F("# rate_Hz="));
+  if (s_rateHz < 1.0f)
+    Serial.println(s_rateHz, 1);
+  else
+    Serial.println(s_rateHz, 0);
+}
+
+static void applySampleRateIdx(int idx, bool announce) {
+  if (idx < 0) idx = 0;
+  if (idx >= RATE_LADDER_N) idx = RATE_LADDER_N - 1;
+  s_rateIdx = idx;
+  s_rateHz = RATE_LADDER[idx];
+  uint64_t periodUs = periodUsFromRate(s_rateHz);
+  if (s_timer) {
+    timerAlarm(s_timer, periodUs, true, 0);
+  }
+  if (announce) printRateConfirm();
+}
+
+static void printHelp() {
+  Serial.print(F("# LabSens báscula "));
+  Serial.println(FW_VERSION);
+  Serial.println(F("# Autor: Sebastian Fingerhuth (PUCV / LabSens)"));
+  Serial.print(F("# "));
+  Serial.println(FW_URL);
+  Serial.println(F("# Comandos USB (un carácter):"));
+  Serial.println(F("#   T / t  — retara (ADS + offsets de sesión)"));
+  Serial.println(F("#   j      — bajar tasa de muestreo ADS (timer)"));
+  Serial.println(F("#   k      — subir tasa de muestreo ADS (timer)"));
+  Serial.println(F("#   R      — reset tasa a 750 SPS"));
+  Serial.println(F("#   h / H  — esta ayuda"));
+  Serial.println(F("# Escala: 0.5,1,2,5,10,30 luego 50..750 paso 50 SPS"));
+  printRateConfirm();
+}
+
 static void tareADS(int n) {
   long sR = 0, sF = 0;
   for (int i = 0; i < n; ++i) {
@@ -159,7 +216,17 @@ void taskSerialCmd(void*) {
   for (;;) {
     if (Serial.available()) {
       char c = (char)Serial.read();
-      if (c == 'T' || c == 't') g_requestTare = true;
+      if (c == 'T' || c == 't') {
+        g_requestTare = true;
+      } else if (c == 'j') {
+        applySampleRateIdx(s_rateIdx - 1, true);
+      } else if (c == 'k') {
+        applySampleRateIdx(s_rateIdx + 1, true);
+      } else if (c == 'R') {
+        applySampleRateIdx(RATE_IDX_DEFAULT, true);
+      } else if (c == 'h' || c == 'H') {
+        printHelp();
+      }
     }
     vTaskDelay(pdMS_TO_TICKS(20));
   }
@@ -167,7 +234,7 @@ void taskSerialCmd(void*) {
 void setup() {
   Serial.begin(115200);
   while (!Serial) { delay(10); }
-  Wire.begin(SDA, SCL);
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);  // D4=SDA, D5=SCL (cableado LabSens)
   Wire.setClock(I2C_FREQ);
 
   // Extensión térmica opcional: si no hay DS18B20, CSV de 6 columnas (compat).
@@ -184,7 +251,9 @@ void setup() {
   s_semaSample = xSemaphoreCreateBinary();
   s_timer = timerBegin(1000000);
   timerAttachInterrupt(s_timer, &onTimer);
-  timerAlarm(s_timer, TIMER_PERIOD_US, true, 0);
+  s_rateIdx = RATE_IDX_DEFAULT;
+  s_rateHz = RATE_LADDER[s_rateIdx];
+  timerAlarm(s_timer, periodUsFromRate(s_rateHz), true, 0);
 #if CONFIG_FREERTOS_UNICORE
   // ESP32-C6 (and other single-core): APP_CPU_NUM is undefined; no pin needed
   xTaskCreate(taskADS, "ads", 4096, nullptr, configMAX_PRIORITIES - 2, nullptr);
