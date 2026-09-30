@@ -94,8 +94,11 @@ void taskADS(void*) {
   }
 }
 void taskHX711(void*) {
-  hx1.begin(HX1_DAT, HX1_CLK, 128);
-  hx2.begin(HX2_DAT, HX2_CLK, 128);
+  // HX711 0.3.x: begin(data, clock) only; gain via set_gain()
+  hx1.begin(HX1_DAT, HX1_CLK);
+  hx2.begin(HX2_DAT, HX2_CLK);
+  hx1.set_gain(128);
+  hx2.set_gain(128);
   hx1.tare(10); hx2.tare(10);
   const int N = NUM_CALIB_SAMPLES;
   long s1 = 0, s2 = 0; int c1 = 0, c2 = 0;
@@ -138,8 +141,15 @@ void setup() {
   s_timer = timerBegin(1000000);
   timerAttachInterrupt(s_timer, &onTimer);
   timerAlarm(s_timer, TIMER_PERIOD_US, true, 0);
+#if CONFIG_FREERTOS_UNICORE
+  // ESP32-C6 (and other single-core): APP_CPU_NUM is undefined; no pin needed
+  xTaskCreate(taskADS, "ads", 4096, nullptr, configMAX_PRIORITIES - 2, nullptr);
+  xTaskCreate(taskHX711, "hx", 4096, nullptr, 1, nullptr);
+  xTaskCreate(taskSerialCmd, "cmd", 2048, nullptr, 1, nullptr);
+#else
   xTaskCreatePinnedToCore(taskADS, "ads", 4096, nullptr, configMAX_PRIORITIES - 2, nullptr, APP_CPU_NUM);
   xTaskCreatePinnedToCore(taskHX711, "hx", 4096, nullptr, 1, nullptr, APP_CPU_NUM);
   xTaskCreatePinnedToCore(taskSerialCmd, "cmd", 2048, nullptr, 1, nullptr, APP_CPU_NUM);
+#endif
 }
 void loop() {}
