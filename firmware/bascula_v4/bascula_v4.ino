@@ -1,5 +1,7 @@
 // LabSens PUCV · MIE 856 · báscula v4
-// ADS1115 ~800 Hz + 2x HX711. CSV t_ms,ads_rear,ads_front,hx1,hx2,sps_ads (con tara). Serial T = retara.
+// ADS1115 ~800 Hz + 2x HX711. CSV t_ms,ads_rear,ads_front,hx1,hx2,sps_ads (con tara).
+// Extensión opcional: DS18B20 en D6 → columna temp_C si el sensor responde al arranque.
+// Serial T = retara.
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -7,6 +9,8 @@
 #include <freertos/semphr.h>
 #include "ads_configs.h"
 #include <HX711.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 #define HX1_DAT D1
 #define HX1_CLK D0
@@ -18,6 +22,9 @@
 #ifndef SCL
   #define SCL D4
 #endif
+// DS18B20 (OneWire): pin libre; D0–D5 ocupados por HX711 e I2C.
+#define DS18B20_PIN D6
+#define TEMP_SAMPLE_MS 1000UL
 #define I2C_FREQ 100000UL
 #define TIMER_HZ 800
 #define TIMER_PERIOD_US (1000000UL / TIMER_HZ)
@@ -34,6 +41,12 @@ static long hx1_offset = 0, hx2_offset = 0;
 static uint32_t lastSpsTime = 0;
 static uint16_t spsCount = 0, spsADS = 0;
 HX711 hx1, hx2;
+
+// Temperatura: muestreo lento en task propia (no en el camino ADS ~800 Hz).
+static OneWire oneWire(DS18B20_PIN);
+static DallasTemperature dallas(&oneWire);
+static bool g_tempEnabled = false;
+static volatile float g_tempC = NAN;
 
 static inline void adsWriteConfig(uint8_t addr, uint16_t cfg) {
   Wire.beginTransmission(addr);
@@ -79,8 +92,10 @@ void taskADS(void*) {
     int16_t f = adsReadConv(ADS_ADDR_FRONT);
     int16_t rT = r - adsRear_offset, fT = f - adsFront_offset;
     long hx1l, hx2l;
+    float tempC = NAN;
     portENTER_CRITICAL(&s_spin);
     g_adsRear = rT; g_adsFront = fT; hx1l = g_hx1; hx2l = g_hx2;
+    if (g_tempEnabled) tempC = g_tempC;
     portEXIT_CRITICAL(&s_spin);
     spsCount++;
     uint32_t now = millis();
@@ -90,7 +105,13 @@ void taskADS(void*) {
     Serial.print(fT); Serial.print(',');
     Serial.print(hx1l); Serial.print(',');
     Serial.print(hx2l); Serial.print(',');
-    Serial.println(spsADS);
+    Serial.print(spsADS);
+    if (g_tempEnabled) {
+      Serial.print(',');
+      if (isnan(tempC)) Serial.print(F("nan"));
+      else Serial.print(tempC, 2);
+    }
+    Serial.println();
   }
 }
 void taskHX711(void*) {
@@ -122,6 +143,18 @@ void taskHX711(void*) {
     vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
+void taskTemp(void*) {
+  // DS18B20: conversión ~750 ms @ 12 bit; muestreo ~1 Hz fuera del path ADS.
+  for (;;) {
+    dallas.requestTemperatures();
+    float t = dallas.getTempCByIndex(0);
+    if (t == DEVICE_DISCONNECTED_C) t = NAN;
+    portENTER_CRITICAL(&s_spin);
+    g_tempC = t;
+    portEXIT_CRITICAL(&s_spin);
+    vTaskDelay(pdMS_TO_TICKS(TEMP_SAMPLE_MS));
+  }
+}
 void taskSerialCmd(void*) {
   for (;;) {
     if (Serial.available()) {
@@ -136,7 +169,18 @@ void setup() {
   while (!Serial) { delay(10); }
   Wire.begin(SDA, SCL);
   Wire.setClock(I2C_FREQ);
-  Serial.println(F("t_ms,ads_rear,ads_front,hx1,hx2,sps_ads"));
+
+  // Extensión térmica opcional: si no hay DS18B20, CSV de 6 columnas (compat).
+  dallas.begin();
+  DeviceAddress addr;
+  g_tempEnabled = dallas.getAddress(addr, 0);
+  if (g_tempEnabled) {
+    dallas.setResolution(addr, 12);
+    Serial.println(F("t_ms,ads_rear,ads_front,hx1,hx2,sps_ads,temp_C"));
+  } else {
+    Serial.println(F("t_ms,ads_rear,ads_front,hx1,hx2,sps_ads"));
+  }
+
   s_semaSample = xSemaphoreCreateBinary();
   s_timer = timerBegin(1000000);
   timerAttachInterrupt(s_timer, &onTimer);
@@ -146,10 +190,14 @@ void setup() {
   xTaskCreate(taskADS, "ads", 4096, nullptr, configMAX_PRIORITIES - 2, nullptr);
   xTaskCreate(taskHX711, "hx", 4096, nullptr, 1, nullptr);
   xTaskCreate(taskSerialCmd, "cmd", 2048, nullptr, 1, nullptr);
+  if (g_tempEnabled)
+    xTaskCreate(taskTemp, "temp", 3072, nullptr, 1, nullptr);
 #else
   xTaskCreatePinnedToCore(taskADS, "ads", 4096, nullptr, configMAX_PRIORITIES - 2, nullptr, APP_CPU_NUM);
   xTaskCreatePinnedToCore(taskHX711, "hx", 4096, nullptr, 1, nullptr, APP_CPU_NUM);
   xTaskCreatePinnedToCore(taskSerialCmd, "cmd", 2048, nullptr, 1, nullptr, APP_CPU_NUM);
+  if (g_tempEnabled)
+    xTaskCreatePinnedToCore(taskTemp, "temp", 3072, nullptr, 1, nullptr, APP_CPU_NUM);
 #endif
 }
 void loop() {}
