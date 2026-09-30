@@ -1,1 +1,3 @@
-Based on OneWire 2.3.8. util/OneWire_direct_gpio.h: treat ESP32-C6/H2 like C3 (GPIO.*.val) so the library builds on Arduino-ESP32 3.x / pioarduino.
+Placeholder only. Do not use as a library.
+OneWire for this project comes from pstolarz/OneWireNg (API-compatible OneWire.h)
+because registry paulstoffregen/OneWire@2.3.8 does not build on ESP32-C6 / Arduino-ESP32 3.x.
