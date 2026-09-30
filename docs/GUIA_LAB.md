@@ -4,20 +4,24 @@
 PlatformIO: abrir la raíz del repo, env `xiao_c6` o `xiao_s3`, Build, Upload, monitor 115200.
 
 ## Datos
-Header base: `t_ms,ads_rear,ads_front,hx1,hx2,sps_ads`  
+Header (ancho fijo, comas alineadas): `      t_ms,ads_rear,ads_front,       hx1,       hx2,sps_ads`  
+Las filas CSV usan el mismo padding (`printf`); parsers toleran espacios alrededor de los campos.  
 Tara de sesión: `T` o `t` en el monitor serie (115200).
 
-### Comandos USB (firmware v4.1)
+### Comandos USB (firmware v4.2)
 
 | Tecla | Acción |
 |-------|--------|
 | `T` / `t` | Retara (offsets de sesión) |
-| `j` | Baja la tasa de muestreo ADS (periodo del timer HW) |
-| `k` | Sube la tasa de muestreo ADS |
-| `R` | Restablece la tasa a **750 SPS** |
-| `h` / `H` | Ayuda (versión, autor, URL del repo, comandos) |
+| `j` | Baja la tasa de muestreo ADS (periodo del timer HW); pausa CSV ~2 s |
+| `k` | Sube la tasa de muestreo ADS; pausa CSV ~2 s |
+| `R` | Restablece la tasa a **750 SPS**; pausa CSV ~2 s |
+| `q` / `Q` | Toggle stream CSV: pausa/reanuda transmisión (`# stream=off` / `# stream=on`) |
+| `h` / `H` | Ayuda (versión, autor, URL, comandos); pausa CSV ~5 s |
 
-Escala de tasas: `0.5 → 1 → 2 → 5 → 10 → 30` SPS y luego `50…750` en pasos de 50. Al cambiar la tasa, el firmware imprime una línea `# rate_Hz=…` (prefijo `#` para no romper parsers CSV). La tasa por defecto al arrancar es 750 SPS.
+Escala de tasas: `0.5 → 1 → 2 → 5 → 10 → 30` SPS y luego `50…750` en pasos de 50. Al cambiar la tasa, el firmware imprime líneas en blanco y luego `# rate_Hz=…`. La tasa por defecto al arrancar es 750 SPS.
+
+**Filtrado:** todos los mensajes de control empiezan con `#` (ayuda, tasa, stream). En postproceso se pueden descartar con `grep -v '^#'` o equivalente. El stream CSV se pausa brevemente en ayuda/cambio de tasa para que esas líneas no queden intercaladas a 750 SPS; con `q` se puede dejar el stream apagado mientras se lee la ayuda o se ajusta la tasa.
 
 ## Extensión opcional: temperatura (DS18B20)
 
@@ -34,8 +38,8 @@ Para el ensayo de varios días conviene medir temperatura cerca de las celdas. E
 
 - Si al arranque el sensor **no responde**, el log queda igual que siempre: 6 columnas y el header de arriba. Scripts y planillas existentes no se rompen.
 - Si el sensor **sí responde**, el header pasa a ser  
-  `t_ms,ads_rear,ads_front,hx1,hx2,sps_ads,temp_C`  
-  y cada fila agrega la temperatura en °C (2 decimales). Si una lectura puntual falla, esa celda sale como `nan`.
+  `      t_ms,ads_rear,ads_front,       hx1,       hx2,sps_ads, temp_C`  
+  y cada fila agrega la temperatura en °C (2 decimales, ancho 7). Si una lectura puntual falla, esa celda sale como `    nan`.
 
 La temperatura se muestrea ~1 vez por segundo en una tarea aparte; **no** interfiere con el muestreo ADS (tasa configurable, por defecto 750 SPS).
 
