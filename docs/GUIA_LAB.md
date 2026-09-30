@@ -16,7 +16,7 @@ Para el ensayo de varios días conviene medir temperatura cerca de las celdas. E
 | Pin de datos | **D6** (D0–D5 están ocupados: HX711 + I2C) |
 | Alimentación | 3V3 y GND del XIAO |
 | Pull-up | Resistencia **4,7 kΩ** entre el pin de datos (D6) y 3V3 |
-| Librerías | OneWire + DallasTemperature (ya en `platformio.ini`) |
+| Librerías | OneWireNg (API OneWire) + DallasTemperature (ya en `platformio.ini`) |
 
 **Comportamiento CSV (compatibilidad):**
 
