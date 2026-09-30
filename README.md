@@ -37,9 +37,10 @@ Ver `docs/ENUNCIADO.md` y `docs/GUIA_LAB.md`.
 1. Flash + prueba de 20 min.
 2. Tara, calibración con masa conocida.
 3. Log de ≥4 y ≥8 días.
-4. Temperatura (v3.1 no la mide).
+4. Temperatura (opcional DS18B20 en D6; sin sensor el CSV sigue en 6 columnas).
 5. Informe: sensibilidad, resolución, exactitud, precisión, error, deriva, sync ADS vs HX.
 
 ## CSV v4
 
 `t_ms,ads_rear,ads_front,hx1,hx2,sps_ads` — valores con tara. Serial: `T` retara.
+Opcional DS18B20 en **D6**: si el sensor responde al arranque, se agrega `,temp_C` (ver `docs/GUIA_LAB.md`).
