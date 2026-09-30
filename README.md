@@ -42,5 +42,5 @@ Ver `docs/ENUNCIADO.md` y `docs/GUIA_LAB.md`.
 
 ## CSV v4
 
-`t_ms,ads_rear,ads_front,hx1,hx2,sps_ads` — valores con tara. Serial: `T`/`t` retara; `j`/`k` tasa; `R`=750 SPS; `h` ayuda (ver `docs/GUIA_LAB.md`).
+`t_ms,ads_rear,ads_front,hx1,hx2,sps_ads` — valores con tara, campos de ancho fijo (comas alineadas). Serial: `T`/`t` retara; `j`/`k`/`R` tasa; `q` stream on/off; `h` ayuda (mensajes `#…`; ver `docs/GUIA_LAB.md`).
 Opcional DS18B20 en **D6**: si el sensor responde al arranque, se agrega `,temp_C` (ver `docs/GUIA_LAB.md`).
