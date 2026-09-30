@@ -1,0 +1,20 @@
+{
+  "name": "OneWire",
+  "description": "Control 1-Wire protocol (DS18B20, etc)",
+  "keywords": "onewire, 1-wire, bus, sensor, temperature",
+  "authors":
+  {
+    "name": "Paul Stoffregen",
+    "url": "http://www.pjrc.com",
+    "maintainer": true
+  },
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/PaulStoffregen/OneWire.git"
+  },
+  "version": "2.3.8",
+  "homepage": "http://www.pjrc.com/teensy/td_libs_OneWire.html",
+  "frameworks": "arduino",
+  "platforms": "*"
+}
